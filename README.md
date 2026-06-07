@@ -13,5 +13,5 @@ An [R](https://www.r-project.org/) package  implementing model-based clustering 
 - Install/update `mclustCompositional` package from GitHub
 
   ```
-  pak::pkg_install("luca-scr/statml")
+  pak::pkg_install("luca-scr/mclustCompositional")
   ```
