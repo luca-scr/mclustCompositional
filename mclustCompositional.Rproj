@@ -1,0 +1,21 @@
+Version: 1.0
+ProjectId: 49cd04a6-6d35-48ce-9efc-8de1753a9f5b
+
+RestoreWorkspace: Default
+SaveWorkspace: Default
+AlwaysSaveHistory: Default
+
+EnableCodeIndexing: Yes
+UseSpacesForTab: Yes
+NumSpacesForTab: 2
+Encoding: UTF-8
+
+RnwWeave: knitr
+LaTeX: pdfLaTeX
+
+BuildType: Package
+PackageUseDevtools: Yes
+PackageInstallArgs: --no-multiarch --with-keep.source
+PackageBuildArgs: --compact-vignettes --force
+PackageCheckArgs: --timings --as-cran --run-dontrun --run-donttest
+PackageRoxygenize: rd,collate,namespace

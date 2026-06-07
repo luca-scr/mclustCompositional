@@ -1,0 +1,200 @@
+---
+title: "A quick tour of mclustCompositional"
+date: "`r format(Sys.time(), '%d %b %Y')`"
+author: "Luca Scrucca & Fedele Greco"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: false
+    css: "vignette.css"
+vignette: >
+  %\VignetteIndexEntry{Model-Based Clustering and Density Estimation for Compositional Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(fig.align = "center", 
+               out.width = "90%",
+               fig.width = 6, fig.height = 5,
+               dev.args = list(pointsize=10),
+               par = TRUE, # needed for setting hook 
+               collapse = TRUE, # collapse input & output code in chunks
+               warning = FALSE)
+
+knit_hooks$set(par = function(before, options, envir)
+  { if(before && options$fig.show != "none") 
+       par(family = "sans", mar=c(4.1,4.1,1.1,1.1), mgp=c(3,1,0), tcl=-0.5)
+})
+
+plot_simplex <- function(x, col = "black", pch = 20,
+                         labels = colnames(x), grid = TRUE, ...)
+{
+
+  xname <- deparse(substitute(x))
+  x <- as.matrix(x)
+  d <- ncol(x)
+  stopifnot(d == 3)
+  x <- x / rowSums(x)
+  if(is.null(labels)) labels <- paste0(xname, 1:d)
+
+  h <- sqrt(3) / 2
+  xy <- cbind(x[, 2] + 0.5 * x[, 3], h * x[, 3])
+
+
+  plot(NA, xlim = c(-0.08, 1.08), ylim = c(-0.06, h + 0.10),
+       asp = 1, axes = FALSE, xlab = "", ylab = "",
+       frame.plot = FALSE, ...)
+
+  polygon(c(0, 1, 0.5), c(0, 0, h), border = "grey30", lwd = 1.5)
+
+  if(grid) 
+  {
+    vals <- seq(0.2, 0.8, by = 0.2)
+    for(v in vals) 
+    {
+      lines(c(0.5 * (1 - v), 1 - v), c(h * (1 - v), 0), col = "grey90")
+      lines(c(v, v + 0.5 * (1 - v)), c(0, h * (1 - v)), col = "grey90")
+      lines(c(0.5 * v, 1 - 0.5 * v), c(h * v, h * v), col = "grey90")
+    }
+  }
+
+  points(xy, col = col, pch = pch, ...)
+  text(c(-0.04, 1.04, 0.5), c(-0.04, -0.04, h + 0.05),
+       labels = labels, xpd = NA)
+
+  invisible(xy)
+}
+
+set.seed(1) # for exact reproducibility
+```
+
+```{r}
+library(mclustCompositional)
+```
+
+## Overview
+
+`mclustCompositional` fits Gaussian mixture models to compositional data by
+working in isometric log-ratio (ILR) coordinates. The workflow is:
+
+1. transform positive compositions to unconstrained ILR coordinates;
+2. fit Gaussian mixtures with `mclust`;
+3. select the best model by BIC or ICL;
+4. evaluate densities, posterior probabilities, and classifications on the
+   original compositional scale.
+
+The closure constant is arbitrary: multiplying a composition by a positive
+constant does not change its ILR coordinates.
+
+## Simulated compositions via ILR transform and its inverse
+
+The helper `ilr_inverse()` is convenient for simulating compositions from
+Gaussian groups in ILR space:
+
+```{r}
+y = rbind(matrix(rnorm(80, mean = c(-1.2, 0.0), sd = 0.35),
+                 ncol = 2, byrow = TRUE),
+          matrix(rnorm(80, mean = c( 1.0, 0.8), sd = 0.35), 
+                 ncol = 2, byrow = TRUE))
+x = ilr_inverse(y)
+```
+
+Note that each row of `x` is a three-part composition summing to one:
+
+```{r closure}
+head(cbind(x, Sum = rowSums(x)))
+```
+
+The compositional data can be transformed to ILR coordinates with `ilr_transform()`:
+```{r}
+y = ilr_transform(x)
+```
+which recovers the original coordinates used for simulation.
+
+Plot of the compositions on the simplex and their ILR coordinates:
+```{r, echo=-1, fig.width=8, fig.height=4}
+par(mfrow = c(1, 2))
+plot(y, pch = 20)
+plot_simplex(x)
+```
+
+## Density estimation
+
+Use `densityMclustCompositional()` when the fitted density is the primary
+object of interest:
+
+```{r density-fit}
+dens = densityMclustCompositional(x)
+summary(dens, parameters = TRUE)
+```
+
+Predictions can return mixture densities, component densities, or posterior
+probabilities.
+
+```{r predict}
+newx = x[1:5, ]
+predict(dens, newx, what = "dens")
+predict(dens, newx, what = "z")
+```
+
+A fitted density can be visualized in ILR coordinates or directly on the
+simplex. The simplex plot below uses a triangular grid and evaluates the
+compositional density with `predict()`.
+
+```{r, fig.width=8, fig.height=4}
+par(mfrow = c(1, 2))
+ygrid = expand.grid(ilr1 = seq(min(y[,1]), max(y[,1]), length.out = 100),
+                    ilr2 = seq(min(y[,2]), max(y[,2]), length.out = 100))
+mclust::surfacePlot(data = ygrid,
+                    parameters = dens$parameters,
+                    what = "density", 
+                    type = "contour")
+
+h = sqrt(3)/2
+sx = seq(0, 1, length.out = 100)
+sy = seq(0, h, length.out = 100)
+sgrid = expand.grid(sx = sx, sy = sy)
+xgrid = with(sgrid, cbind(1 - sx - sy/(2*h),
+                          sx - sy/(2*h),
+                          sy/h))
+colnames(xgrid) = colnames(x)
+inside = apply(xgrid > 0, 1, all)
+dgrid = rep(NA_real_, nrow(xgrid))
+dgrid[inside] = predict(dens, xgrid[inside, ], what = "dens")
+dgrid = matrix(dgrid, length(sx), length(sy))
+plot_simplex(x, pch = NA)
+contour(sx, sy, dgrid, add = TRUE, drawlabels = FALSE, col = "grey30")
+polygon(c(0, 1, 0.5), c(0, 0, h), border = "grey30", lwd = 1.5)
+```
+
+## Model-based clustering
+
+`MclustCompositional()` is the main clustering function. The example below
+tries one- and two-component Gaussian mixtures with a common full covariance
+model in ILR space.
+
+```{r fit}
+fit = MclustCompositional(x, criterion = "ICL")
+summary(fit)
+```
+
+The posterior probabilities are stored in `fit$z`; classification uncertainty is
+stored in `fit$uncertainty`.
+```{r posterior}
+head(fit$z)
+summary(fit$uncertainty)
+```
+
+Plot of clustering on the simplex and using the ILR coordinates:
+```{r, echo=-1, fig.width=8, fig.height=4}
+par(mfrow = c(1, 2))
+cols = mclust.options("classPlotColors")
+plot(y, pch = 20, col = cols[fit$classification])
+plot_simplex(x, col = cols[fit$classification])
+```
+
+```{r}
+
+```
